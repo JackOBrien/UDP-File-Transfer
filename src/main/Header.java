@@ -6,12 +6,16 @@ import java.nio.ByteBuffer;
 public class Header {
 
 	/** Header length in bytes */
-	private final int HEADER_SIZE = 96;
+	public static final int HEADER_SIZE = 96;
 	
 	private byte[] data;
 	
 	public Header() {
 		data = new byte[HEADER_SIZE];
+	}
+	
+	public Header(byte[] data) {
+		this.data = data;
 	}
 	
 	public void setSequenceNum(int seqNum) {
@@ -64,7 +68,15 @@ public class Header {
 		}
 	}
 	
-	public byte[] getHeader() {
+	public boolean getAckFlag() {
+		return (data[11] & 2) == 1;
+	}
+	
+	public boolean getSynFlag() {
+		return (data[11] & 1) == 1;
+	}
+	
+	public byte[] getBytes() {
 		setChecksum();
 		return data;
 	}

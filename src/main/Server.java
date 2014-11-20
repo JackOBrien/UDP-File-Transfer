@@ -110,7 +110,7 @@ public class Server {
 		}
 	}
 	
-	private void send (byte[] data) throws IOException {
+	private void send(byte[] data) throws IOException {
 		DatagramPacket sendPacket = new DatagramPacket(data, data.length);
 		
 		serverSocket.send(sendPacket);
