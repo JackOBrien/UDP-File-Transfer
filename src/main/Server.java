@@ -1,5 +1,6 @@
 package main;
 
+import java.io.File;
 import java.io.IOException;
 import java.net.DatagramPacket;
 import java.net.DatagramSocket;
@@ -15,15 +16,23 @@ public class Server {
 	 
 	private final int PACKET_SIZE = 1024;
 	
+	private final String PATH = "files/";
+	
+	private String files;
+	
 	private int serverPort;
 	
 	private DatagramSocket serverSocket;
 	
 	private InetAddress clientAddr;
 	
+	private int clientPort;
+	
 	private String requestedFile;
 
 	public Server() throws SocketException {
+		files = "";
+		
 		promptUser();
 		initializeServer();
 	}
@@ -56,6 +65,20 @@ public class Server {
 		System.out.println(msg);
 	}
 	
+	private void getAvailFiles() {
+		File folder = new File(PATH);		
+		File[] fileArr = folder.listFiles();
+		
+		if (fileArr == null) return;
+		
+		for (int i = 0; i < fileArr.length; i++) {
+			
+			if (fileArr[i].isFile()) {
+				files += fileArr[i].getName() + ";";
+			}
+		}
+	}
+	
 	private DatagramPacket receive() {
 		byte[] buf = new byte[PACKET_SIZE];
 		
@@ -78,16 +101,65 @@ public class Server {
 			recvPacket = receive();
 		} while (recvPacket == null);
 		
-		// TODO: Check for connection request
+		System.out.println("Got a packet!");
+		
+		byte[] data = recvPacket.getData();
+		Header head = new Header(data);
+		
+		/* If received non SYN packet, retry */
+		if (!head.getSynFlag()) {
+			establishConnection();
+		}
 		
 		clientAddr = recvPacket.getAddress();
+		clientPort = recvPacket.getPort();
 		
-		// TODO: Get requested file path
-		requestedFile = null;
+		getAvailFiles();
+		
+		Header ackHead = new Header();
+		ackHead.setAckFlag(true);
+		ackHead.setSynFlag(true);
+		
+		byte[] headData = ackHead.getBytes();
+		
+		int ackPackLen = headData.length + files.length();
+		ackHead.setLength(ackPackLen);
+		
+		byte[] packData = new byte[ackPackLen];
+		
+		/* Populate ACK data array with header data */
+		for (int i = 0; i < headData.length; i++) {
+			packData[i] = headData[i];
+		}
+		
+		/* Populate ACK data array with list of files */
+		for (int i = 0; i < files.length(); i++) {
+			packData[i + headData.length] = (byte) files.charAt(i);
+		}
+		
+		/* Send ACK header to client */
+		try {
+			send(packData);
+		} catch (IOException e) {
+			establishConnection();
+		}
+		
+		DatagramPacket reqPack = null;
+		
+		do {
+			reqPack = receive();
+		} while (reqPack == null);
+		
+		byte[] bytes = reqPack.getData();
+		 requestedFile = "";
+		
+		for (int i = Header.HEADER_SIZE; i < bytes.length; i++) {
+			requestedFile += (char) bytes[i];
+		}
 	}
 	
 	private byte[] fileToBytes(String path) throws IOException {
-		Path p = Paths.get(path);
+		Path p = Paths.get(PATH + path);
 		return Files.readAllBytes(p);
 	}
 	
@@ -110,8 +182,17 @@ public class Server {
 		}
 	}
 	
+
+	/****************************************************************
+	 * Sends the given data to the most recent connected client on 
+	 * the port the server is hosted on.
+	 * 
+	 * @param data
+	 * @throws IOException
+	 ***************************************************************/
 	private void send(byte[] data) throws IOException {
-		DatagramPacket sendPacket = new DatagramPacket(data, data.length);
+		DatagramPacket sendPacket = new DatagramPacket(data, 
+				data.length, clientAddr, clientPort);
 		
 		serverSocket.send(sendPacket);
 	}
@@ -126,18 +207,26 @@ public class Server {
 				data = fileToBytes(requestedFile);
 			} catch (IOException e) {
 				// TODO: Send error to client
-				System.err.println("File '" + requestedFile + "' not found.");
+				System.err.println("File '" + requestedFile + 
+						"' not found.");
 				continue;
 			}
+			
+			sendFile(data);
 		}
 	}
 	
 	public static void main(String[] args) {
+		Server s = null;
+		
 		try {
-			new Server();
+			s = new Server();
 		} catch (SocketException e) {
 			System.err.println(e.getMessage());
+			System.exit(1);
 		}
+		
+		s.begin();		
 	}
 }
 

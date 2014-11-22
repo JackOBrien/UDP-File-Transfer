@@ -6,7 +6,7 @@ import java.nio.ByteBuffer;
 public class Header {
 
 	/** Header length in bytes */
-	public static final int HEADER_SIZE = 96;
+	public static final int HEADER_SIZE = 12;
 	
 	private byte[] data;
 	
@@ -69,11 +69,11 @@ public class Header {
 	}
 	
 	public boolean getAckFlag() {
-		return (data[11] & 2) == 1;
+		return (data[11] & 1) == 1;
 	}
 	
 	public boolean getSynFlag() {
-		return (data[11] & 1) == 1;
+		return (data[11] & 2) == 2;
 	}
 	
 	public byte[] getBytes() {
@@ -85,19 +85,15 @@ public class Header {
 		data[8] = 0; // Sets the checksum
 		data[9] = 0; // to zero
 		
-		long checksum = calculateChecksum(data);
+		short checksum = calculateChecksum(data);
 		
-		byte[] csumArr = 
-				ByteBuffer.allocate(2).putLong(checksum).array();
-		
-		data[8] = csumArr[0];
-		data[9] = csumArr[1];
-		
+		data[8] = (byte) (checksum & 0xFF00);
+		data[9] = (byte) (checksum & 0xFF);
 	}
 	
-	private long calculateChecksum(byte[] buf) {
+	private short calculateChecksum(byte[] buf) {
 		
-		long sum = 0;
+		short sum = 0;
 			
 		for (int i = 0; i < buf.length; i++) {
 			sum += (buf[i++] & 0xFF) << 8;
@@ -114,6 +110,6 @@ public class Header {
 			}
 		}
 		
-		return ~(sum & 0xFFFF);
+		return (short) ~(sum & 0xFFFF);
 	}
 }
