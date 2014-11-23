@@ -179,19 +179,21 @@ public class Client {
 		DatagramPacket ackPacket = null;
 		
 		do {
+			
 			try {
 				ackPacket = receive();
 			} catch (SocketTimeoutException e) {
 				System.err.println("Connection timed out");
 				return;
-			} 
+			}
 			//hi
 			catch (IOException e) {
 				e.printStackTrace();
 			}
 					
-			
 		} while (ackPacket == null);
+		
+		
 	}
 	
 	private void send(byte[] data) throws IOException {
