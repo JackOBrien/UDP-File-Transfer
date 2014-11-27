@@ -6,7 +6,6 @@ import java.net.DatagramPacket;
 import java.net.DatagramSocket;
 import java.net.InetAddress;
 import java.net.SocketException;
-import java.net.UnknownHostException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
@@ -123,7 +122,6 @@ public class Server {
 		byte[] headData = ackHead.getBytes();
 		
 		int ackPackLen = headData.length + files.length();
-		ackHead.setLength(ackPackLen);
 		
 		byte[] packData = new byte[ackPackLen];
 		

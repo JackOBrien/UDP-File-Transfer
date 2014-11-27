@@ -13,6 +13,8 @@ public class Client {
 
 	private final int PACKET_SIZE = 1024;
 	
+	private final int RECV_WINDOW = 5;
+	
 	/** Timeout in milliseconds */
 	private final int TIMEOUT = 2500;
 	
@@ -145,34 +147,47 @@ public class Client {
 		
 		System.out.print("\nSelect a file: ");
 		String reqFile = scan.nextLine();
+		scan.close();
 		
 		Header head = new Header();
 		
 		byte[] headData = head.getBytes();
 		
-		int ackPackLen = headData.length + reqFile.length();
-		head.setLength(ackPackLen);
+		int reqPackLen = headData.length + reqFile.length();
 		
-		byte[] packData = new byte[ackPackLen];
+		byte[] packData = new byte[reqPackLen];
 		
-		/* Populate ACK data array with header data */
+		/* Populate REQ data array with header data */
 		for (int i = 0; i < headData.length; i++) {
 			packData[i] = headData[i];
 		}
 		
-		/* Populate ACK data array with list of files */
+		/* Populate ACK data array with requested file */
 		for (int i = 0; i < reqFile.length(); i++) {
 			packData[i + headData.length] = (byte) reqFile.charAt(i);
 		}
 		
-		/* Send ACK header to client */
+		/* Send REQ packet to client */
 		try {
 			send(packData);
 		} catch (IOException e) {
 			e.printStackTrace();
 		}
 		
-		scan.close();
+		DatagramPacket reqAckPacket = null;
+		
+		// Wait for REQ ACK from server
+		try {
+			reqAckPacket = receive();
+		} catch (SocketTimeoutException e) {
+			System.err.println("Request Timed out");
+			return;
+		} catch (IOException e) {
+			e.printStackTrace();
+			return;
+		} 
+		
+		// TODO: Handle case if server's REQ ACK is dropped
 	}
 	
 	private void acceptFile() {

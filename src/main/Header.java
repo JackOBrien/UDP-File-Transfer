@@ -1,12 +1,9 @@
 package main;
 
-import java.nio.ByteBuffer;
-
-
 public class Header {
 
 	/** Header length in bytes */
-	public static final int HEADER_SIZE = 12;
+	public static final int HEADER_SIZE = 8;
 	
 	private byte[] data;
 	
@@ -19,82 +16,109 @@ public class Header {
 	}
 	
 	public void setSequenceNum(int seqNum) {
-		final int numBytes = 4;
+		byte[] converted = intToByteArr(4, seqNum);
 		
-		byte[] seqArr = 
-				ByteBuffer.allocate(numBytes).putInt(seqNum).array();
-		
-		for(int i = 0; i < numBytes; i++) {
-			data[i] = seqArr[i];
-		}
-	}
-	
-	public void setAckNum(int ackNum) {
-		final int numBytes = 4;
-		
-		byte[] ackArr = 
-				ByteBuffer.allocate(numBytes).putInt(ackNum).array();
-		
-		for(int i = 0; i < numBytes; i++) {
-			data[i + 4] = ackArr[i];
-		}
-	}
-	
-	/** TODO: Find out if we need this */
-	public void setLength(int length) {
-		final int numBytes = 2;
-		
-		byte[] ackArr = 
-				ByteBuffer.allocate(numBytes).putInt(length).array();
-		
-		for(int i = 0; i < numBytes; i++) {
-			data[i + 10] = ackArr[i];
+		for (int i = 0; i < converted.length; i++) {
+			data[i] = converted[i];
 		}
 	}
 	
 	public void setSynFlag(boolean flag) {
 		if (flag) {
-			data[11] |= 2; 
+			data[6] |= 1 << 7; 
 		} else {
-			data[11] &= ~(2);
+			data[6] &= ~(1 << 7);
 		}
 	}
 	
 	public void setAckFlag(boolean flag) {
 		if (flag) {
-			data[11] |= 1; 
+			data[6] |= 1 << 6; 
 		} else {
-			data[11] &= ~(1);
+			data[6] &= ~(1 << 6);
+		}
+	}
+	
+	public void setReqFlag(boolean flag) {
+		if (flag) {
+			data[6] |= 1 << 5; 
+		} else {
+			data[6] &= ~(1 << 5);
 		}
 	}
 	
 	public boolean getAckFlag() {
-		return (data[11] & 1) == 1;
+		int x = (1 << 7);
+		return (data[6] & x) == x;
 	}
 	
 	public boolean getSynFlag() {
-		return (data[11] & 2) == 2;
+		int x = (1 << 6);
+		return (data[6] & x) == x;
+	}
+	
+	public boolean getReqFlag() {
+		int x = (1 << 5);
+		return (data[6] & x) == x;
 	}
 	
 	public byte[] getBytes() {
-		setChecksum();
 		return data;
 	}
 	
-	private void setChecksum() {
-		data[8] = 0; // Sets the checksum
-		data[9] = 0; // to zero
+	public void setChecksum(byte[] dataField) {
+		data[4] = 0; // Sets the checksum
+		data[5] = 0; // to zero
+		
+		int hLen = data.length;
+		int dLen = dataField.length;
+		
+		byte[] checksumData = new byte[hLen + dLen];
+		System.arraycopy(data, 0, checksumData, 0, hLen);
+		System.arraycopy(dataField, 0, checksumData, hLen, dLen);
 		
 		short checksum = calculateChecksum(data);
 		
-		data[8] = (byte) (checksum & 0xFF00);
-		data[9] = (byte) (checksum & 0xFF);
+		data[4] = (byte) (checksum & 0xFF00);
+		data[5] = (byte) (checksum & 0xFF);
 	}
 	
-	private short calculateChecksum(byte[] buf) {
+	private byte[] intToByteArr(int numBytes, int toConvert) {
+		byte[] data = new byte[numBytes];
 		
+		for (int i = numBytes - 1, offset = 0; i >= 0; i--, offset += 8) {
+			data[i] = (byte) (toConvert >> offset);
+		}
+		
+		return data;
+	}
+	
+	public static byte[] createStatusPacket(boolean good, int numPackets, 
+			int numBytes) {
+		
+		Header head = new Header();
+		head.setAckFlag(true);
+		head.setReqFlag(true);
+		
+		final int dataLen = 9;
+		byte[] dataField = new byte[dataLen];
+		
+		dataField[0] = (byte) ((good? 1:0) << 7);
+		
+		if (good) {
+			byte[] convertedPack = head.intToByteArr(4, numPackets);
+			byte[] convertedByte = head.intToByteArr(4, numPackets);
+		
+			System.arraycopy(convertedPack, 0, dataField, 0, 3);
+			System.arraycopy(convertedByte, 0, dataField, 4, 7);
+		}
+		
+		return dataField;
+	}
+	
+	public static short calculateChecksum(byte[] buf) {
 		short sum = 0;
-			
+		
 		for (int i = 0; i < buf.length; i++) {
 			sum += (buf[i++] & 0xFF) << 8;
 			
