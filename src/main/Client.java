@@ -15,6 +15,12 @@ public class Client {
 	
 	private final int RECV_WINDOW = 5;
 	
+	private String fileName;
+	
+	private int numPackets;
+	
+	private int fileSize;
+	
 	/** Timeout in milliseconds */
 	private final int TIMEOUT = 2500;
 	
@@ -29,8 +35,11 @@ public class Client {
 	public Client() throws SocketException, IOException {
 		promptUser();
 		initalizeClient();
-		establishConnection();
-		requestFile();
+		
+		if (!establishConnection()) return;
+		
+		if (!requestFile()) return;
+		
 		acceptFile();
 	}
 	
@@ -84,7 +93,7 @@ public class Client {
 		}
 	}
 	
-	private void establishConnection() throws IOException {
+	private boolean establishConnection() throws IOException {
 		String msg = "Attempting to connect to server at ";
 		msg += serverAddr.getHostAddress();
 		msg += " port " + serverPort;
@@ -95,13 +104,13 @@ public class Client {
 		
 		byte[] sendHeader = synHeader.getBytes();
 		
-		send(sendHeader);
-		
 		final int attempts = 3;
 		
 		DatagramPacket packet = null;
 		
 		for (int i = 0; i < attempts; i++) {
+			
+			send(sendHeader);
 			
 			try {
 				packet = receive();
@@ -110,25 +119,35 @@ public class Client {
 				Header head = new Header(data);
 				
 				if (!head.getAckFlag() || !head.getSynFlag()) {
+					System.err.println("Received unexpected packet");
 					packet = null;
 					i--;
 					continue;
 				}
 					
-			} catch (SocketTimeoutException e) {}
+			} catch (SocketTimeoutException e) {
+				System.err.println("Connection attempt " + 
+						(i + 1) + " timed out.");
+			}
 		}
 		
 		if (packet == null) {
 			msg = "Unable to establish conenction";
 			System.err.println(msg);
-			return;
+			return false;
 		}
 		
 		byte[] bytes = packet.getData();
 		String availableFiles = "";
 		
+		/* Loop through data field */
 		for (int i = Header.HEADER_SIZE; i < bytes.length; i++) {
 			availableFiles += (char) bytes[i];
+		}
+		
+		if (availableFiles.isEmpty()) {
+			System.err.println("Server has no files to send");
+			return false;
 		}
 		
 		String[] files = availableFiles.split(";");
@@ -140,20 +159,23 @@ public class Client {
 		for (String file : files) {
 			System.out.println("\t" + file);
 		}
+		
+		return true;
 	}
 	
-	private void requestFile() {
+	private boolean requestFile() throws IOException {
 		Scanner scan = new Scanner(System.in);
 		
 		System.out.print("\nSelect a file: ");
-		String reqFile = scan.nextLine();
+		fileName = scan.nextLine();
 		scan.close();
 		
 		Header head = new Header();
+		head.setReqFlag(true);
 		
 		byte[] headData = head.getBytes();
 		
-		int reqPackLen = headData.length + reqFile.length();
+		int reqPackLen = headData.length + fileName.length();
 		
 		byte[] packData = new byte[reqPackLen];
 		
@@ -163,52 +185,99 @@ public class Client {
 		}
 		
 		/* Populate ACK data array with requested file */
-		for (int i = 0; i < reqFile.length(); i++) {
-			packData[i + headData.length] = (byte) reqFile.charAt(i);
+		for (int i = 0; i < fileName.length(); i++) {
+			packData[i + headData.length] = (byte) fileName.charAt(i);
 		}
 		
-		/* Send REQ packet to client */
-		try {
+		System.out.println("Requesting file \"" + fileName + "\"");
+		
+		final int attempts = 3;
+		
+		DatagramPacket reqAckPack = null;
+		
+		for (int i = 0; i < attempts; i++) {
+			
 			send(packData);
-		} catch (IOException e) {
-			e.printStackTrace();
-		}
-		
-		DatagramPacket reqAckPacket = null;
-		
-		// Wait for REQ ACK from server
-		try {
-			reqAckPacket = receive();
-		} catch (SocketTimeoutException e) {
-			System.err.println("Request Timed out");
-			return;
-		} catch (IOException e) {
-			e.printStackTrace();
-			return;
-		} 
-		
-		// TODO: Handle case if server's REQ ACK is dropped
-	}
-	
-	private void acceptFile() {
-		DatagramPacket ackPacket = null;
-		
-		do {
 			
 			try {
-				ackPacket = receive();
-			} catch (SocketTimeoutException e) {
-				System.err.println("Connection timed out");
-				return;
-			}
-			//hi
-			catch (IOException e) {
-				e.printStackTrace();
-			}
+				reqAckPack = receive();
+				byte[] data = reqAckPack.getData();
+				
+				Header recvHead = new Header(data);
+				
+				if (!recvHead.getAckFlag() || !recvHead.getReqFlag()) {
+					System.err.println("Received unexpected packet");
+					reqAckPack = null;
+					i--;
+					continue;
+				}
 					
-		} while (ackPacket == null);
+			} catch (SocketTimeoutException e) {
+				System.err.println("Request " + (i + 1) + " timed out.");
+			}
+		}
 		
+		if (reqAckPack == null) {
+			String msg = "Server not responding to request";
+			System.err.println(msg);
+			return false;
+		}
 		
+		byte[] reqAckData = reqAckPack.getData();
+		
+		int statusCode = (int) reqAckData[Header.HEADER_SIZE];
+		
+		/* Checks for non "good" status */
+		if (statusCode != (1 << 7)) {
+			String msg = "Server does not recognize requested file";
+			System.err.println(msg);
+			return false;
+		}
+		
+		numPackets = (int) (reqAckData[Header.HEADER_SIZE + 1] << 24 |
+				reqAckData[Header.HEADER_SIZE + 2] << 16 |
+				reqAckData[Header.HEADER_SIZE + 3] << 8 |
+				reqAckData[Header.HEADER_SIZE + 4]);
+		
+		fileSize = (int) (reqAckData[Header.HEADER_SIZE + 5] << 24 |
+				reqAckData[Header.HEADER_SIZE + 6] << 16 |
+				reqAckData[Header.HEADER_SIZE + 7] << 8 |
+				reqAckData[Header.HEADER_SIZE + 8]);
+		
+		String msg = "File \"" + fileName + "\" is " + fileSize + " bytes";
+		System.out.println(msg);
+		
+		return true;
+		
+	}
+	
+	private void acceptFile() throws IOException {
+		int lastReceived = 0;
+		
+		for (int i = 0; i < RECV_WINDOW; i++) {
+			DatagramPacket recvPack = null;
+			
+			try {
+				recvPack = receive();
+				
+				Header head = new Header();
+				int seqNum = head.getSequenceNum();
+				
+				
+				if (seqNum != lastReceived + 1) {
+					String msg = "Got unexpected packet. Sequence number: ";
+					msg += seqNum;
+					System.err.println(msg);
+					i--;
+					continue;
+				}
+				
+				lastReceived = seqNum;
+				
+			} catch (SocketTimeoutException e) {
+				
+			}
+		}
 	}
 	
 	private void send(byte[] data) throws IOException {
