@@ -62,6 +62,10 @@ public class Header {
 		return (data[6] & x) == x;
 	}
 	
+	public int getSequenceNum() {
+		return (int) (data[0] << 24 | data[1] << 16 | data[2] << 8 | data[3]);
+	}
+	
 	public byte[] getBytes() {
 		return data;
 	}
