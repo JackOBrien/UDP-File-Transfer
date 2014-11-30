@@ -1,5 +1,7 @@
 package main;
 
+import java.io.File;
+import java.io.FileOutputStream;
 import java.io.IOException;
 import java.net.DatagramPacket;
 import java.net.DatagramSocket;
@@ -253,17 +255,30 @@ public class Client {
 	
 	private void acceptFile() throws IOException {
 		int lastReceived = 0;
+		int bytesReceived = 0;
 		
-		for (int i = 0; i < RECV_WINDOW; i++) {
-			DatagramPacket recvPack = null;
-			
-			try {
-				recvPack = receive();
+		final String path = File.separator + fileName;
+		
+		File file = new File(path);
+		file.createNewFile();
+		
+		FileOutputStream fos = new FileOutputStream(path, true);
+		
+		while (lastReceived != numPackets) {
+			for (int i = 0; i < RECV_WINDOW; i++) {
+				DatagramPacket recvPack = null;
+
+				try {
+					recvPack = receive();
+				} catch (SocketTimeoutException e) {
+					break;
+				}
 				
-				Header head = new Header();
+				Header head = new Header(recvPack.getData());
 				int seqNum = head.getSequenceNum();
-				
-				
+
+				// TODO: Check the checksum
+
 				if (seqNum != lastReceived + 1) {
 					String msg = "Got unexpected packet. Sequence number: ";
 					msg += seqNum;
@@ -273,11 +288,26 @@ public class Client {
 				}
 				
 				lastReceived = seqNum;
+
+				byte[] bytes = head.getBytes();
+				int hSize = Header.HEADER_SIZE;
 				
-			} catch (SocketTimeoutException e) {
+				bytesReceived += bytes.length - hSize;
+
+				fos.write(bytes, hSize, bytes.length - hSize);
 				
+				System.out.println(bytesReceived / fileSize + "%");
 			}
+
+			// Send ACK to Sever
+			Header ackPack = new Header();
+			ackPack.setAckFlag(true);
+			ackPack.setSequenceNum(lastReceived);
 		}
+		
+		System.out.println("File transfer complete.");
+		
+		fos.close();
 	}
 	
 	private void send(byte[] data) throws IOException {
