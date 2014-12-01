@@ -66,6 +66,10 @@ public class Header {
 		return (int) (data[0] << 24 | data[1] << 16 | data[2] << 8 | data[3]);
 	}
 	
+	public int getChecksum() {
+		return (int) (data[4] << 8 | data[5]);
+	}
+	
 	public byte[] getBytes() {
 		return data;
 	}
@@ -81,10 +85,20 @@ public class Header {
 		System.arraycopy(data, 0, checksumData, 0, hLen);
 		System.arraycopy(dataField, 0, checksumData, hLen, dLen);
 		
-		short checksum = calculateChecksum(data);
+		int checksum = calculateChecksum(checksumData);
 		
 		data[4] = (byte) (checksum & 0xFF00);
 		data[5] = (byte) (checksum & 0xFF);
+	}
+	
+	public void setChecksum() {
+		data[4] = 0; // Sets the checksum
+		data[5] = 0; // to zero
+
+		int checksum = calculateChecksum(data);
+		
+		data[4] = (byte) (checksum >>> 16);
+		data[5] = (byte) (checksum & 0xFF); // TODO: FIX THIS
 	}
 	
 	private byte[] intToByteArr(int numBytes, int toConvert) {
@@ -117,6 +131,8 @@ public class Header {
 			System.arraycopy(convertedByte, 0, dataField, 5, 4);
 		}
 		
+		head.setChecksum(dataField);
+		
 		byte[] toReturn = new byte[HEADER_SIZE + dataLen];
 		
 		for (int i = 0; i < HEADER_SIZE; i++) {
@@ -130,8 +146,8 @@ public class Header {
 		return toReturn;
 	}
 	
-	public static short calculateChecksum(byte[] buf) {
-		short sum = 0;
+	public static int calculateChecksum(byte[] buf) {
+		long sum = 0;
 		
 		for (int i = 0; i < buf.length; i++) {
 			sum += (buf[i++] & 0xFF) << 8;
@@ -140,14 +156,9 @@ public class Header {
 			if (i == buf.length) break;
 			
 			sum += (buf[i] & 0xFF);
-			
-			/* Check for carry bits */
-			if (sum >>> 16 > 0) {
-				sum &= 0xFFFF + sum >>> 16;
-				sum &= 0xFFFF;
-			}
 		}
 		
-		return (short) ~(sum & 0xFFFF);
+		long carryFix = ((sum & 0xFFFF)+(sum >>> 16))&0xFFFF;
+		return (int) ~carryFix;
 	}
 }

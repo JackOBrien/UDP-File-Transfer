@@ -145,6 +145,7 @@ public class Server {
 		Header ackHead = new Header();
 		ackHead.setAckFlag(true);
 		ackHead.setSynFlag(true);
+		ackHead.setChecksum(files.getBytes());
 		
 		byte[] headData = ackHead.getBytes();
 		

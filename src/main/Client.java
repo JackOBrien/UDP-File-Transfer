@@ -43,10 +43,9 @@ public class Client {
 		acceptFile();
 	}
 	
+	@SuppressWarnings("resource")
 	private void promptUser() {
 		Scanner scan = new Scanner(System.in);
-		
-		// TODO: fix retry
 		
 		System.out.print("Please specify a port number: ");
 		String input = scan.nextLine();
@@ -99,6 +98,7 @@ public class Client {
 		
 		Header synHeader = new Header();
 		synHeader.setSynFlag(true);
+		synHeader.setChecksum();
 		
 		byte[] sendHeader = synHeader.getBytes();
 		
@@ -106,6 +106,7 @@ public class Client {
 		
 		DatagramPacket packet = null;
 		
+		/* Waiting for SYN ACK */
 		for (int i = 0; i < attempts; i++) {
 			
 			send(sendHeader);
@@ -128,6 +129,9 @@ public class Client {
 			} catch (SocketTimeoutException e) {
 				System.err.println("Connection attempt " + 
 						(i + 1) + " timed out.");
+			} catch (BadChecksumException bc) {
+				System.err.println(bc.getMessage());
+				continue;
 			}
 		}
 		
@@ -174,6 +178,7 @@ public class Client {
 		
 		Header head = new Header();
 		head.setReqFlag(true);
+		head.setChecksum(fileName.getBytes());
 		
 		byte[] headData = head.getBytes();
 		
@@ -197,6 +202,7 @@ public class Client {
 		
 		DatagramPacket reqAckPack = null;
 		
+		/* Waiting for REQ ACK */
 		for (int i = 0; i < attempts; i++) {
 			
 			send(packData);
@@ -207,7 +213,8 @@ public class Client {
 				
 				Header recvHead = new Header(data);
 				
-				if (!recvHead.getAckFlag() || !recvHead.getReqFlag()) {
+				if (!recvHead.getAckFlag() || !recvHead.getReqFlag() || 
+						recvHead.getSynFlag()) {
 					System.err.println("Received unexpected packet");
 					reqAckPack = null;
 					i--;
@@ -218,6 +225,10 @@ public class Client {
 				
 			} catch (SocketTimeoutException e) {
 				System.err.println("Request " + (i + 1) + " timed out.");
+			} catch (BadChecksumException bc) {
+				System.err.println(bc.getMessage());
+				i--;
+				continue;
 			}
 		}
 		
@@ -280,6 +291,10 @@ public class Client {
 					recvPack = receive();
 				} catch (SocketTimeoutException e) {
 					break;
+				} catch (BadChecksumException bc) {
+					System.err.println(bc.getMessage());
+					i--;
+					continue;
 				}
 				
 				Header head = new Header(recvPack.getData());
@@ -343,7 +358,7 @@ public class Client {
 	}
 	
 	private DatagramPacket receive() throws IOException, 
-		SocketTimeoutException {
+		SocketTimeoutException, BadChecksumException{
 				
 		byte[] recvData = new byte[1024];
 		
@@ -352,6 +367,12 @@ public class Client {
 		
 		clientSocket.receive(recvPacket);
 
+		int expected = Header.calculateChecksum(recvData);
+		int received = new Header(recvData).getChecksum();
+		
+		if (expected != received)
+			throw new BadChecksumException(expected, received);
+		
 		return recvPacket;
 	}
 	
