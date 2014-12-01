@@ -12,8 +12,6 @@ import java.net.UnknownHostException;
 import java.util.Scanner;
 
 public class Client {
-
-	private final int PACKET_SIZE = 1024;
 	
 	private final int RECV_WINDOW = 5;
 	
@@ -24,7 +22,7 @@ public class Client {
 	private int fileSize;
 	
 	/** Timeout in milliseconds */
-	private final int TIMEOUT = 2500;
+	private final int TIMEOUT = 5000;
 	
 	private int clientPort;
 	
@@ -79,8 +77,6 @@ public class Client {
 			System.err.println("Invalid port number");
 			promptUser();
 		}
-		
-		scan.close();
 	}
 	
 	private void initalizeClient() throws SocketException {
@@ -126,7 +122,9 @@ public class Client {
 					i--;
 					continue;
 				}
-					
+				
+				break;
+				
 			} catch (SocketTimeoutException e) {
 				System.err.println("Connection attempt " + 
 						(i + 1) + " timed out.");
@@ -138,6 +136,8 @@ public class Client {
 			System.err.println(msg);
 			return false;
 		}
+		
+		System.out.println("Got connection acknowledgement from server");
 		
 		byte[] bytes = packet.getData();
 		String availableFiles = "";
@@ -169,7 +169,7 @@ public class Client {
 		Scanner scan = new Scanner(System.in);
 		
 		System.out.print("\nSelect a file: ");
-		fileName = scan.nextLine();
+		fileName = scan.next();
 		scan.close();
 		
 		Header head = new Header();
@@ -214,6 +214,8 @@ public class Client {
 					continue;
 				}
 					
+				break;
+				
 			} catch (SocketTimeoutException e) {
 				System.err.println("Request " + (i + 1) + " timed out.");
 			}
@@ -227,7 +229,7 @@ public class Client {
 		
 		byte[] reqAckData = reqAckPack.getData();
 		
-		int statusCode = (int) reqAckData[Header.HEADER_SIZE];
+		int statusCode = (int) reqAckData[Header.HEADER_SIZE] & 0xFF;
 		
 		/* Checks for non "good" status */
 		if (statusCode != (1 << 7)) {
@@ -236,15 +238,15 @@ public class Client {
 			return false;
 		}
 		
-		numPackets = (int) (reqAckData[Header.HEADER_SIZE + 1] << 24 |
-				reqAckData[Header.HEADER_SIZE + 2] << 16 |
-				reqAckData[Header.HEADER_SIZE + 3] << 8 |
-				reqAckData[Header.HEADER_SIZE + 4]);
+		numPackets = (int) ((reqAckData[Header.HEADER_SIZE + 1] & 0xFF) << 24 |
+				(reqAckData[Header.HEADER_SIZE + 2] & 0xFF) << 16 |
+				(reqAckData[Header.HEADER_SIZE + 3] & 0xFF) << 8 |
+				(reqAckData[Header.HEADER_SIZE + 4] & 0xFF));
 		
-		fileSize = (int) (reqAckData[Header.HEADER_SIZE + 5] << 24 |
-				reqAckData[Header.HEADER_SIZE + 6] << 16 |
-				reqAckData[Header.HEADER_SIZE + 7] << 8 |
-				reqAckData[Header.HEADER_SIZE + 8]);
+		fileSize = (int) ((reqAckData[Header.HEADER_SIZE + 5] & 0xFF) << 24 |
+				(reqAckData[Header.HEADER_SIZE + 6] & 0xFF) << 16 |
+				(reqAckData[Header.HEADER_SIZE + 7] & 0xFF) << 8 |
+				(reqAckData[Header.HEADER_SIZE + 8] & 0xFF));
 		
 		String msg = "File \"" + fileName + "\" is " + fileSize + " bytes";
 		System.out.println(msg);
@@ -257,9 +259,14 @@ public class Client {
 		int lastReceived = 0;
 		int bytesReceived = 0;
 		
-		final String path = File.separator + fileName;
+		final String path = System.getProperty("user.dir") + "/" + fileName;
 		
 		File file = new File(path);
+		
+		if (file.exists()) {
+			file.delete();
+		}
+		
 		file.createNewFile();
 		
 		FileOutputStream fos = new FileOutputStream(path, true);
@@ -289,16 +296,21 @@ public class Client {
 				
 				lastReceived = seqNum;
 
-				byte[] bytes = head.getBytes();
+				byte[] bytes = recvPack.getData();
 				int hSize = Header.HEADER_SIZE;
-				
-				bytesReceived += bytes.length - hSize;
 
 				fos.write(bytes, hSize, bytes.length - hSize);
 				
-				System.out.println(bytesReceived / fileSize + "%");
+				bytesReceived += bytes.length - hSize;
+				
+				if (lastReceived == numPackets) break;
 			}
 
+			double percentage = (((double) bytesReceived) /
+					((double) fileSize)) * 100;
+			
+			System.out.println( (int) percentage + "%");
+			
 			// Send ACK to Sever
 			Header ackPack = new Header();
 			ackPack.setAckFlag(true);

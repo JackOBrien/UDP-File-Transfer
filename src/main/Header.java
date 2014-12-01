@@ -47,12 +47,12 @@ public class Header {
 		}
 	}
 	
-	public boolean getAckFlag() {
+	public boolean getSynFlag() {
 		int x = (1 << 7);
 		return (data[6] & x) == x;
 	}
-	
-	public boolean getSynFlag() {
+
+	public boolean getAckFlag() {
 		int x = (1 << 6);
 		return (data[6] & x) == x;
 	}
@@ -111,13 +111,23 @@ public class Header {
 		
 		if (good) {
 			byte[] convertedPack = head.intToByteArr(4, numPackets);
-			byte[] convertedByte = head.intToByteArr(4, numPackets);
+			byte[] convertedByte = head.intToByteArr(4, numBytes);
 		
-			System.arraycopy(convertedPack, 0, dataField, 0, 3);
-			System.arraycopy(convertedByte, 0, dataField, 4, 7);
+			System.arraycopy(convertedPack, 0, dataField, 1, 4);
+			System.arraycopy(convertedByte, 0, dataField, 5, 4);
 		}
 		
-		return dataField;
+		byte[] toReturn = new byte[HEADER_SIZE + dataLen];
+		
+		for (int i = 0; i < HEADER_SIZE; i++) {
+			toReturn[i] = head.getBytes()[i];
+		}
+		
+		for (int i = 0; i < dataLen; i++) {
+			toReturn[i + HEADER_SIZE] = dataField[i];
+		}
+		
+		return toReturn;
 	}
 	
 	public static short calculateChecksum(byte[] buf) {

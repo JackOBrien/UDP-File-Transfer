@@ -13,7 +13,7 @@ import java.util.Scanner;
 
 public class Server {
 	 
-	private final int PACKET_SIZE = 1024;
+	private final int MAX_PACKET_SIZE = 1024;
 	
 	private final String PATH = "files/";
 	
@@ -68,6 +68,8 @@ public class Server {
 		File folder = new File(PATH);		
 		File[] fileArr = folder.listFiles();
 		
+		files = "";
+		
 		if (fileArr == null) return;
 		
 		for (int i = 0; i < fileArr.length; i++) {
@@ -79,7 +81,7 @@ public class Server {
 	}
 	
 	private DatagramPacket receive() {
-		byte[] buf = new byte[PACKET_SIZE];
+		byte[] buf = new byte[MAX_PACKET_SIZE];
 		
 		DatagramPacket packet = new DatagramPacket(buf, buf.length);
 		
@@ -106,12 +108,15 @@ public class Server {
 		Header head = new Header(data);
 		
 		/* If received non SYN packet, retry */
-		if (!head.getSynFlag()) {
+		if (!head.getSynFlag() || head.getReqFlag() || head.getAckFlag()) {
 			establishConnection();
 		}
 		
 		clientAddr = recvPacket.getAddress();
 		clientPort = recvPacket.getPort();
+		
+		System.out.println("Received SYN packet from " + 
+				clientAddr.getHostAddress() + " " + " on port " + clientPort);
 		
 		getAvailFiles();
 		
@@ -152,8 +157,14 @@ public class Server {
 		 requestedFile = "";
 		
 		for (int i = Header.HEADER_SIZE; i < bytes.length; i++) {
-			requestedFile += (char) bytes[i];
+			char c = (char) bytes[i];
+			
+			if (c == '\0') break;
+			
+			requestedFile += c;
 		}
+		
+		System.out.println("Client is requesting \"" + requestedFile + "\"");
 	}
 	
 	private byte[] fileToBytes(String path) throws IOException {
@@ -161,21 +172,43 @@ public class Server {
 		return Files.readAllBytes(p);
 	}
 	
-	private void sendFile(byte[] fileData) {
-		
-		for (int i = 0; i < fileData.length; i += PACKET_SIZE) {
-			// TODO: Build packet
-			byte[] packetData = new byte[PACKET_SIZE];
+	private void sendFile(byte[] fileData, int numPackets) {
+
+		for (int i = 0; i < numPackets; i ++) {
+			
+			Header head = new Header();
+			head.setSequenceNum(i + 1);
+			
+			// TODO: Checksum junk
+			
+			final int maxData = MAX_PACKET_SIZE - Header.HEADER_SIZE;
+			
+			int leftToSend = fileData.length - (maxData) * i;
+			
+			int packSize = leftToSend;
+			
+			if (packSize > maxData) 
+				packSize = maxData;
+			
+			packSize += Header.HEADER_SIZE;
+			
+			byte[] packetData = new byte[packSize];
 			
 			/* Populate packet byte array */
-			for (int k = 0; k < PACKET_SIZE && k < fileData.length; k++) {
-				packetData[k] = fileData[i + k];
+			for (int k = Header.HEADER_SIZE; k < packSize; k++) {
+				packetData[k] = 
+						fileData[(i * maxData) + (k - Header.HEADER_SIZE)];
 			}
+			
+			head.setChecksum(packetData);
+			
+			System.arraycopy(head.getBytes(), 0, packetData, 0, 
+					Header.HEADER_SIZE);
 			
 			try {
 				send(packetData);
 			} catch (IOException e) {
-				// TODO: Resend packet
+				e.printStackTrace();
 			}
 		}
 	}
@@ -195,7 +228,7 @@ public class Server {
 		serverSocket.send(sendPacket);
 	}
 	
-	public void begin() {
+	public void begin() throws IOException {
 
 		while (true) {
 			establishConnection();
@@ -204,13 +237,23 @@ public class Server {
 			try {
 				data = fileToBytes(requestedFile);
 			} catch (IOException e) {
-				// TODO: Send error to client
+				byte[] status = Header.createStatusPacket(false, 0, 0);
+				send(status);
+
 				System.err.println("File '" + requestedFile + 
 						"' not found.");
 				continue;
 			}
 			
-			sendFile(data);
+			
+			int numPackets = (int) Math.ceil(((double) data.length) / 
+					((double) MAX_PACKET_SIZE));
+			
+			byte[] statusPacket = Header.createStatusPacket(true, numPackets, 
+					data.length);
+			send(statusPacket);
+			
+			sendFile(data, numPackets);
 		}
 	}
 	
@@ -224,7 +267,11 @@ public class Server {
 			System.exit(1);
 		}
 		
-		s.begin();		
+		try {
+			s.begin();
+		} catch (IOException e) {
+			e.printStackTrace();
+		}		
 	}
 }
 
