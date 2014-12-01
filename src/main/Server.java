@@ -86,7 +86,8 @@ public class Server {
 		}
 	}
 	
-	private DatagramPacket receive() throws SocketTimeoutException {
+	private DatagramPacket receive() throws SocketTimeoutException, 
+		BadChecksumException {
 		byte[] buf = new byte[MAX_PACKET_SIZE];
 		
 		DatagramPacket packet = new DatagramPacket(buf, buf.length);
@@ -100,6 +101,12 @@ public class Server {
 			return null;
 		}
 		
+		int expected = Header.calculateChecksum(buf);
+		int received = new Header(buf).getChecksum();
+		
+		if (expected != received)
+			throw new BadChecksumException(expected, received);
+		
 		return packet;
 	}
 	
@@ -111,6 +118,9 @@ public class Server {
 				recvPacket = receive();
 			} catch (SocketTimeoutException e) {
 				continue;
+			} catch (BadChecksumException bc) {
+				System.err.println(bc.getMessage());
+				continue;
 			}
 		} while (recvPacket == null);
 				
@@ -119,6 +129,8 @@ public class Server {
 		
 		/* If received non SYN packet, retry */
 		if (!head.getSynFlag() || head.getReqFlag() || head.getAckFlag()) {
+			
+			System.err.println("Received unexpected packet");
 			establishConnection();
 		}
 		
@@ -160,10 +172,24 @@ public class Server {
 		
 		DatagramPacket reqPack = null;
 		
+		/* Wait for REQ from client */
 		do {
 			try {
 				reqPack = receive();
+				
+				Header recvHead = new Header(recvPacket.getData());
+				
+				/* Check for proper header */
+				if (!recvHead.getReqFlag() || recvHead.getAckFlag() || 
+						recvHead.getSynFlag()) {
+					System.err.println("Received unexpected packet");
+					continue;
+				}
+				
 			} catch (SocketTimeoutException e) {
+				continue;
+			} catch (BadChecksumException bc) {
+				System.err.println(bc.getMessage());
 				continue;
 			}
 		} while (reqPack == null);
@@ -244,7 +270,15 @@ public class Server {
 			
 			try {
 				ackPacket = receive();
-				// TODO: Checksum 
+				
+				Header head = new Header(ackPacket.getData());
+				
+				if (!head.getAckFlag() || head.getReqFlag() || 
+						head.getSynFlag()) {
+					System.err.println("Received unexpected packet");
+					continue;
+				}
+				
 			} catch (SocketTimeoutException e) {
 				
 				if (++numRetry > attempts) {
@@ -254,6 +288,9 @@ public class Server {
 								
 				System.err.println("Acknowledgement timed out. Resending "
 						+ "packet " + lastAck + "\n");
+				continue;
+			} catch (BadChecksumException be) {
+				System.err.println(be.getMessage());
 				continue;
 			}
 			numRetry = 0;
