@@ -248,8 +248,9 @@ public class Client {
 				(reqAckData[Header.HEADER_SIZE + 7] & 0xFF) << 8 |
 				(reqAckData[Header.HEADER_SIZE + 8] & 0xFF));
 		
+		System.out.println("Got acknowledgement from server");
 		String msg = "File \"" + fileName + "\" is " + fileSize + " bytes";
-		System.out.println(msg);
+		System.out.println(msg + "\n");
 		
 		return true;
 		
@@ -295,40 +296,38 @@ public class Client {
 				}
 				
 				lastReceived = seqNum;
-
-				if (lastReceived != numPackets) {
-					byte[] bytes = recvPack.getData();
-					int hSize = Header.HEADER_SIZE;
-
-					fos.write(bytes, hSize, bytes.length - hSize);
-
-					bytesReceived += bytes.length - hSize;
-				} else {
-					int hSize = Header.HEADER_SIZE;
-					
-					byte[] bytes = recvPack.getData();
-					byte[] corrected = 
-							new byte[fileSize - bytesReceived + hSize];
-					
-					System.arraycopy(bytes, 0, corrected, 0, corrected.length);
-					
-					fos.write(corrected, hSize, corrected.length - hSize);
-
-					bytesReceived += corrected.length - hSize;
-					break;
-				}
 				
-			}
+				byte[] bytes = recvPack.getData();
+				int hSize = Header.HEADER_SIZE;
+				
+				if (lastReceived == numPackets) {
+					byte[] temp = new byte[fileSize - bytesReceived + hSize];
+					System.arraycopy(bytes, 0, temp, 0, temp.length);
+					
+					bytes = temp;
+				}
 
-			double percentage = (((double) bytesReceived) /
-					((double) fileSize)) * 100;
+				fos.write(bytes, hSize, bytes.length - hSize);
+
+				bytesReceived += bytes.length - hSize;
+
+				double percentage = (((double) bytesReceived) /
+						((double) fileSize)) * 100;
+				
+				String msg = String.format("%s %d \t%4.2f%%",
+						"- Received packet number", lastReceived, percentage);
+				System.out.println(msg);
+				
+				if (lastReceived == numPackets) break;				
+			}
 			
-			System.out.println( (int) percentage + "%");
-			
-			// Send ACK to Sever
 			Header ackPack = new Header();
 			ackPack.setAckFlag(true);
 			ackPack.setSequenceNum(lastReceived);
+			
+			send(ackPack.getBytes());
+			System.out.println("Sending acknowledgement of packet "
+					+ lastReceived + "\n");
 		}
 		
 		System.out.println("File transfer complete.");

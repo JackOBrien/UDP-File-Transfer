@@ -6,6 +6,7 @@ import java.net.DatagramPacket;
 import java.net.DatagramSocket;
 import java.net.InetAddress;
 import java.net.SocketException;
+import java.net.SocketTimeoutException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
@@ -15,7 +16,11 @@ public class Server {
 	 
 	private final int MAX_PACKET_SIZE = 1024;
 	
+	private final int SEND_WINDOW = 5;
+	
 	private final String PATH = "files/";
+	
+	private final int TIMEOUT = 4000;
 	
 	private String files;
 	
@@ -53,6 +58,7 @@ public class Server {
 	private void initializeServer() throws SocketException {
 		try {
 			serverSocket = new DatagramSocket(serverPort);
+			serverSocket.setSoTimeout(TIMEOUT);
 		} catch (SocketException e) {
 			String message = "Problem hosting server on port ";
 			message += serverPort;
@@ -80,13 +86,15 @@ public class Server {
 		}
 	}
 	
-	private DatagramPacket receive() {
+	private DatagramPacket receive() throws SocketTimeoutException {
 		byte[] buf = new byte[MAX_PACKET_SIZE];
 		
 		DatagramPacket packet = new DatagramPacket(buf, buf.length);
 		
 		try {
 			serverSocket.receive(packet);
+		} catch (SocketTimeoutException se) {
+			throw se;
 		} catch (IOException e) {
 			System.err.println(e.getMessage());
 			return null;
@@ -99,11 +107,13 @@ public class Server {
 		DatagramPacket recvPacket = null;
 		
 		do {
-			recvPacket = receive();
+			try {
+				recvPacket = receive();
+			} catch (SocketTimeoutException e) {
+				continue;
+			}
 		} while (recvPacket == null);
-		
-		System.out.println("Got a packet!");
-		
+				
 		byte[] data = recvPacket.getData();
 		Header head = new Header(data);
 		
@@ -143,6 +153,7 @@ public class Server {
 		/* Send ACK header to client */
 		try {
 			send(packData);
+			System.out.println("Sent ACK to client");
 		} catch (IOException e) {
 			establishConnection();
 		}
@@ -150,7 +161,11 @@ public class Server {
 		DatagramPacket reqPack = null;
 		
 		do {
-			reqPack = receive();
+			try {
+				reqPack = receive();
+			} catch (SocketTimeoutException e) {
+				continue;
+			}
 		} while (reqPack == null);
 		
 		byte[] bytes = reqPack.getData();
@@ -172,45 +187,85 @@ public class Server {
 		return Files.readAllBytes(p);
 	}
 	
-	private void sendFile(byte[] fileData, int numPackets) {
+	private boolean sendFile(byte[] fileData, int numPackets)
+			throws IOException {
+		int lastAck = 0;
 
-		for (int i = 0; i < numPackets; i ++) {
+		int numRetry = 0;
+		final int attempts = 3;
+		
+		byte[] statusPacket = Header.createStatusPacket(true, numPackets, 
+				fileData.length);
+		
+		for (int i = 0; i < numPackets; i = lastAck) {
 			
-			Header head = new Header();
-			head.setSequenceNum(i + 1);
-			
-			// TODO: Checksum junk
-			
-			final int maxData = MAX_PACKET_SIZE - Header.HEADER_SIZE;
-			
-			int leftToSend = fileData.length - (maxData) * i;
-			
-			int packSize = leftToSend;
-			
-			if (packSize > maxData) 
-				packSize = maxData;
-			
-			packSize += Header.HEADER_SIZE;
-			
-			byte[] packetData = new byte[packSize];
-			
-			/* Populate packet byte array */
-			for (int k = Header.HEADER_SIZE; k < packSize; k++) {
-				packetData[k] = 
-						fileData[(i * maxData) + (k - Header.HEADER_SIZE)];
+			if (i == 0) {
+				send(statusPacket);
+				System.out.println("Sending request acknowledgement to client");
 			}
 			
-			head.setChecksum(packetData);
+			for (int x = i; x < SEND_WINDOW + i && x < numPackets; x++) {
+				Header head = new Header();
+				head.setSequenceNum(x + 1);
+
+				// TODO: Checksum junk
+
+				final int maxData = MAX_PACKET_SIZE - Header.HEADER_SIZE;
+				int leftToSend = fileData.length - (maxData) * x;
+				int packSize = leftToSend;
+
+				if (packSize > maxData) 
+					packSize = maxData;
+
+				packSize += Header.HEADER_SIZE;
+
+				byte[] packetData = new byte[packSize];
+
+				/* Populate packet byte array */
+				for (int k = Header.HEADER_SIZE; k < packSize; k++) {
+					packetData[k] = 
+							fileData[(x * maxData) + (k - Header.HEADER_SIZE)];
+				}
+
+				head.setChecksum(packetData);
+
+				System.arraycopy(head.getBytes(), 0, packetData, 0, 
+						Header.HEADER_SIZE);
+
+				try {
+					send(packetData);
+					System.out.println("  Sent packet number " + (x + 1));
+				} catch (IOException e) {
+					e.printStackTrace();
+				}
+			}
 			
-			System.arraycopy(head.getBytes(), 0, packetData, 0, 
-					Header.HEADER_SIZE);
+			DatagramPacket ackPacket = null;
 			
 			try {
-				send(packetData);
-			} catch (IOException e) {
-				e.printStackTrace();
+				ackPacket = receive();
+				// TODO: Checksum 
+			} catch (SocketTimeoutException e) {
+				
+				if (++numRetry > attempts) {
+					System.err.println("Client not responding.");
+					return false;
+				}
+								
+				System.err.println("Acknowledgement timed out. Resending "
+						+ "packet " + lastAck + "\n");
+				continue;
 			}
+			numRetry = 0;
+			
+			Header head = new Header(ackPacket.getData());
+			lastAck = head.getSequenceNum();
+			
+			System.out.println(" -Got acknowledgement of packet " +
+					lastAck + "\n");
 		}
+		
+		return true;
 	}
 	
 
@@ -249,11 +304,11 @@ public class Server {
 			int numPackets = (int) Math.ceil(((double) data.length) / 
 					((double) MAX_PACKET_SIZE));
 			
-			byte[] statusPacket = Header.createStatusPacket(true, numPackets, 
-					data.length);
-			send(statusPacket);
+			System.out.println("-- Starting file transfer --");
 			
-			sendFile(data, numPackets);
+			if (sendFile(data, numPackets)) {
+				System.out.println("File transfer complete.");
+			}
 		}
 	}
 	
