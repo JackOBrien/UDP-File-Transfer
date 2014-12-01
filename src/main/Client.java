@@ -296,14 +296,28 @@ public class Client {
 				
 				lastReceived = seqNum;
 
-				byte[] bytes = recvPack.getData();
-				int hSize = Header.HEADER_SIZE;
+				if (lastReceived != numPackets) {
+					byte[] bytes = recvPack.getData();
+					int hSize = Header.HEADER_SIZE;
 
-				fos.write(bytes, hSize, bytes.length - hSize);
+					fos.write(bytes, hSize, bytes.length - hSize);
+
+					bytesReceived += bytes.length - hSize;
+				} else {
+					int hSize = Header.HEADER_SIZE;
+					
+					byte[] bytes = recvPack.getData();
+					byte[] corrected = 
+							new byte[fileSize - bytesReceived + hSize];
+					
+					System.arraycopy(bytes, 0, corrected, 0, corrected.length);
+					
+					fos.write(corrected, hSize, corrected.length - hSize);
+
+					bytesReceived += corrected.length - hSize;
+					break;
+				}
 				
-				bytesReceived += bytes.length - hSize;
-				
-				if (lastReceived == numPackets) break;
 			}
 
 			double percentage = (((double) bytesReceived) /
