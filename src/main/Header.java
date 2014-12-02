@@ -63,11 +63,12 @@ public class Header {
 	}
 	
 	public int getSequenceNum() {
-		return (int) (data[0] << 24 | data[1] << 16 | data[2] << 8 | data[3]);
+		return (int) (data[0] << 24 | data[1] << 16 | data[2] << 8 
+				| data[3] & 0xFF);
 	}
 	
 	public int getChecksum() {
-		return (int) (data[4] << 8 | data[5]);
+		return (int) (data[4] << 8 | data[5] & 0xFF) & 0xFFFF;
 	}
 	
 	public byte[] getBytes() {
@@ -75,9 +76,6 @@ public class Header {
 	}
 	
 	public void setChecksum(byte[] dataField) {
-		data[4] = 0; // Sets the checksum
-		data[5] = 0; // to zero
-		
 		int hLen = data.length;
 		int dLen = dataField.length;
 		
@@ -87,18 +85,15 @@ public class Header {
 		
 		int checksum = calculateChecksum(checksumData);
 		
-		data[4] = (byte) (checksum & 0xFF00);
-		data[5] = (byte) (checksum & 0xFF);
+		data[4] = (byte) (checksum >>> 8);
+		data[5] = (byte) (checksum);
 	}
 	
 	public void setChecksum() {
-		data[4] = 0; // Sets the checksum
-		data[5] = 0; // to zero
-
 		int checksum = calculateChecksum(data);
 		
-		data[4] = (byte) (checksum >>> 16);
-		data[5] = (byte) (checksum & 0xFF); // TODO: FIX THIS
+		data[4] = (byte) (checksum >>> 8);
+		data[5] = (byte) (checksum);
 	}
 	
 	private byte[] intToByteArr(int numBytes, int toConvert) {
@@ -146,7 +141,13 @@ public class Header {
 		return toReturn;
 	}
 	
-	public static int calculateChecksum(byte[] buf) {
+	public static int calculateChecksum(final byte[] data) {
+		byte[] buf = new byte[data.length];
+		System.arraycopy(data, 0, buf, 0, buf.length);
+		
+		buf[4] = 0;
+		buf[5] = 0;
+		
 		long sum = 0;
 		
 		for (int i = 0; i < buf.length; i++) {
@@ -158,7 +159,7 @@ public class Header {
 			sum += (buf[i] & 0xFF);
 		}
 		
-		long carryFix = ((sum & 0xFFFF)+(sum >>> 16))&0xFFFF;
-		return (int) ~carryFix;
+		long carryFix = ((sum & 0xFFFF)+(sum >>> 16));
+		return (int) ~carryFix & 0xFFFF;
 	}
 }

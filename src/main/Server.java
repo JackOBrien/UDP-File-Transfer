@@ -340,7 +340,7 @@ public class Server {
 			
 			
 			int numPackets = (int) Math.ceil(((double) data.length) / 
-					((double) MAX_PACKET_SIZE));
+					((double) MAX_PACKET_SIZE - Header.HEADER_SIZE));
 			
 			System.out.println("-- Starting file transfer --");
 			

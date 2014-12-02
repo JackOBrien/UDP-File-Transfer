@@ -300,8 +300,6 @@ public class Client {
 				Header head = new Header(recvPack.getData());
 				int seqNum = head.getSequenceNum();
 
-				// TODO: Check the checksum
-
 				if (seqNum != lastReceived + 1) {
 					String msg = "Got unexpected packet. Sequence number: ";
 					msg += seqNum;
@@ -316,7 +314,10 @@ public class Client {
 				int hSize = Header.HEADER_SIZE;
 				
 				if (lastReceived == numPackets) {
+					System.out.println("File size: " + fileSize);
 					byte[] temp = new byte[fileSize - bytesReceived + hSize];
+					System.out.println("Bytes len: " + bytes.length);
+					System.out.println("temp len: " + temp.length);
 					System.arraycopy(bytes, 0, temp, 0, temp.length);
 					
 					bytes = temp;
@@ -339,6 +340,7 @@ public class Client {
 			Header ackPack = new Header();
 			ackPack.setAckFlag(true);
 			ackPack.setSequenceNum(lastReceived);
+			ackPack.setChecksum();
 			
 			send(ackPack.getBytes());
 			System.out.println("Sending acknowledgement of packet "
