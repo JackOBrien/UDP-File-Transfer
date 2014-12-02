@@ -184,6 +184,7 @@ public class Server {
 				if (!recvHead.getReqFlag() || recvHead.getAckFlag() || 
 						recvHead.getSynFlag()) {
 					System.err.println("Received unexpected packet");
+					recvHead = null;
 					continue;
 				}
 				
