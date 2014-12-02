@@ -304,7 +304,6 @@ public class Client {
 					String msg = "Got unexpected packet. Sequence number: ";
 					msg += seqNum;
 					System.err.println(msg);
-					i--;
 					continue;
 				}
 				
