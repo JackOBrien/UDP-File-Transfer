@@ -271,6 +271,9 @@ public class Client {
 		int lastReceived = 0;
 		int bytesReceived = 0;
 		
+		int attempted = 0;
+		final int attempts = 3;
+		
 		final String path = System.getProperty("user.dir") + "/" + fileName;
 		
 		File file = new File(path);
@@ -284,6 +287,8 @@ public class Client {
 		FileOutputStream fos = new FileOutputStream(path, true);
 		
 		while (lastReceived != numPackets) {
+			int recvd = lastReceived;
+			
 			for (int i = 0; i < RECV_WINDOW; i++) {
 				DatagramPacket recvPack = null;
 
@@ -332,6 +337,17 @@ public class Client {
 				System.out.println(msg);
 				
 				if (lastReceived == numPackets) break;				
+			}
+			
+			if (recvd == lastReceived) {
+				attempted ++;
+			} else {
+				attempted = 0;
+			}
+			
+			if (attempted >= attempts) {
+				System.err.println("Server not responding.");
+				return;
 			}
 			
 			Header ackPack = new Header();
