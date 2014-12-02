@@ -313,10 +313,8 @@ public class Client {
 				int hSize = Header.HEADER_SIZE;
 				
 				if (lastReceived == numPackets) {
-					System.out.println("File size: " + fileSize);
 					byte[] temp = new byte[fileSize - bytesReceived + hSize];
-					System.out.println("Bytes len: " + bytes.length);
-					System.out.println("temp len: " + temp.length);
+
 					System.arraycopy(bytes, 0, temp, 0, temp.length);
 					
 					bytes = temp;
