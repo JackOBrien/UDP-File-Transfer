@@ -12,7 +12,7 @@ public class BadChecksumException extends Exception {
 	
 	@Override
 	public String getMessage() {
-		return "Bad Checksum. Expected: " + expected + " Got: " + received;
+		return "Bad Checksum received. Expected: " + expected + " Got: " + received;
 	}
 	
 	public int getExpected() {
