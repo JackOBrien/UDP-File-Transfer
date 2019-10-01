@@ -16,17 +16,11 @@ public class Client {
     private static final int TIMEOUT = 5000;
 
     private String fileName;
-
     private int numPackets;
-
     private int fileSize;
-
     private int clientPort;
-
     private int serverPort;
-
     private InetAddress serverAddr;
-
     private DatagramSocket clientSocket;
 
     public Client() throws IOException {
@@ -84,6 +78,7 @@ public class Client {
     }
 
     private void initializeClient() throws SocketException {
+      
         try {
             clientSocket = new DatagramSocket(clientPort);
             clientSocket.setSoTimeout(TIMEOUT);
@@ -148,6 +143,7 @@ public class Client {
         System.out.println("Got connection acknowledgement from server");
 
         byte[] bytes = packet.getData();
+
         StringBuilder availableFiles = new StringBuilder();
 		
 		/* Loop through data field */
@@ -156,11 +152,14 @@ public class Client {
         }
 
         if (availableFiles.length() == 0) {
+
             System.err.println("Server has no files to send");
             return false;
         }
 
+
         String[] files = availableFiles.toString().split(";");
+
 
         System.out.println(new String(new char[30]).replace('\0', '-'));
         System.out.println("Available files on " +
@@ -189,12 +188,12 @@ public class Client {
         int reqPackLen = headData.length + fileName.length();
 
         byte[] packData = new byte[reqPackLen];
-		
+
 		/* Populate REQ data array with header data */
         for (int i = 0; i < headData.length; i++) {
             packData[i] = headData[i];
         }
-		
+
 		/* Populate ACK data array with requested file */
         for (int i = 0; i < fileName.length(); i++) {
             packData[i + headData.length] = (byte) fileName.charAt(i);
@@ -205,7 +204,7 @@ public class Client {
         final int attempts = 3;
 
         DatagramPacket reqAckPack = null;
-		
+
 		/* Waiting for REQ ACK */
         for (int i = 0; i < attempts; i++) {
 
@@ -245,7 +244,7 @@ public class Client {
         byte[] reqAckData = reqAckPack.getData();
 
         int statusCode = (int) reqAckData[Header.HEADER_SIZE] & 0xFF;
-		
+
 		/* Checks for non "good" status */
         if (statusCode != (1 << 7)) {
             String msg = "Server does not recognize requested file";
