@@ -8,25 +8,24 @@ import java.util.Scanner;
 
 public class Client {
 
-    private final int RECV_WINDOW = 5;
+    private static final int RECV_WINDOW = 5;
+
     /**
      * Timeout in milliseconds
      */
-    private final int TIMEOUT = 5000;
+    private static final int TIMEOUT = 5000;
+
     private String fileName;
     private int numPackets;
     private int fileSize;
     private int clientPort;
-
     private int serverPort;
-
     private InetAddress serverAddr;
-
     private DatagramSocket clientSocket;
 
-    public Client() throws SocketException, IOException {
+    public Client() throws IOException {
         promptUser();
-        initalizeClient();
+        initializeClient();
 
         if (!establishConnection()) return;
 
@@ -35,51 +34,51 @@ public class Client {
         acceptFile();
     }
 
-    public static void main(String[] args) {
-        try {
-            new Client();
-        } catch (Exception e) {
-            e.printStackTrace();
-            System.exit(1);
-        }
-    }
-
-    @SuppressWarnings("resource")
     private void promptUser() {
         Scanner scan = new Scanner(System.in);
 
-        System.out.print("Please specify a port number: ");
-        String input = scan.nextLine();
+        boolean clientPortSet = false;
 
-        try {
-            clientPort = Integer.parseInt(input);
-        } catch (NumberFormatException e) {
-            System.err.println("Invalid port number");
-            promptUser();
-        }
+        do {
+            System.out.print("Please specify a port number: ");
+            String input = scan.nextLine();
 
-        System.out.print("Enter server IPv4 address: ");
-        String destAddr = scan.nextLine();
+            try {
+                clientPort = Integer.parseInt(input);
+                clientPortSet = true;
+            } catch (NumberFormatException e) {
+                System.err.println("Invalid port number");
+            }
+        } while (!clientPortSet);
 
-        try {
-            serverAddr = InetAddress.getByName(destAddr);
-        } catch (UnknownHostException e) {
-            System.err.println("Invalid IPv4 address");
-            promptUser();
-        }
+        do {
+            System.out.print("Enter server IPv4 address: ");
+            String destAddr = scan.nextLine();
 
-        System.out.print("Enter server port number: ");
-        input = scan.nextLine();
+            try {
+                serverAddr = InetAddress.getByName(destAddr);
+            } catch (UnknownHostException e) {
+                System.err.println("Invalid IPv4 address");
+            }
+        } while (serverAddr == null);
 
-        try {
-            serverPort = Integer.parseInt(input);
-        } catch (NumberFormatException e) {
-            System.err.println("Invalid port number");
-            promptUser();
-        }
+        boolean serverPortSet = false;
+
+        do {
+            System.out.print("Enter server port number: ");
+            String input = scan.nextLine();
+
+            try {
+                serverPort = Integer.parseInt(input);
+                serverPortSet = true;
+            } catch (NumberFormatException e) {
+                System.err.println("Invalid port number");
+            }
+        } while (!serverPortSet);
     }
 
-    private void initalizeClient() throws SocketException {
+    private void initializeClient() throws SocketException {
+      
         try {
             clientSocket = new DatagramSocket(clientPort);
             clientSocket.setSoTimeout(TIMEOUT);
@@ -132,12 +131,11 @@ public class Client {
                         (i + 1) + " timed out.");
             } catch (BadChecksumException bc) {
                 System.err.println(bc.getMessage());
-                continue;
             }
         }
 
         if (packet == null) {
-            msg = "Unable to establish conenction";
+            msg = "Unable to establish connection";
             System.err.println(msg);
             return false;
         }
@@ -145,19 +143,23 @@ public class Client {
         System.out.println("Got connection acknowledgement from server");
 
         byte[] bytes = packet.getData();
-        String availableFiles = "";
 
+        StringBuilder availableFiles = new StringBuilder();
+		
 		/* Loop through data field */
         for (int i = Header.HEADER_SIZE; i < bytes.length; i++) {
-            availableFiles += (char) bytes[i];
+            availableFiles.append((char) bytes[i]);
         }
 
-        if (availableFiles.isEmpty()) {
+        if (availableFiles.length() == 0) {
+
             System.err.println("Server has no files to send");
             return false;
         }
 
-        String[] files = availableFiles.split(";");
+
+        String[] files = availableFiles.toString().split(";");
+
 
         System.out.println(new String(new char[30]).replace('\0', '-'));
         System.out.println("Available files on " +
@@ -373,8 +375,7 @@ public class Client {
         clientSocket.send(sendPacket);
     }
 
-    private DatagramPacket receive() throws IOException,
-            SocketTimeoutException, BadChecksumException {
+    private DatagramPacket receive() throws IOException, BadChecksumException {
 
         byte[] recvData = new byte[1024];
 
@@ -390,5 +391,14 @@ public class Client {
             throw new BadChecksumException(expected, received);
 
         return recvPacket;
+    }
+
+    public static void main(String[] args) {
+        try {
+            new Client();
+        } catch (Exception e) {
+            e.printStackTrace();
+            System.exit(1);
+        }
     }
 }
